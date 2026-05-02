@@ -83,6 +83,13 @@ def _regex_findall(value: str, pattern: str):
     return _re.findall(pattern, value or "")
 
 
+import os as _os
+
+@app.template_filter("dirname")
+def _dirname(value: str) -> str:
+    return _os.path.dirname(value) or value
+
+
 # ---------------------------------------------------------------------------
 # Pages
 # ---------------------------------------------------------------------------

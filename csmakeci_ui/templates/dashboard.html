@@ -51,6 +51,9 @@
       <div class="cm-workflow-card-header">
         <div class="cm-workflow-card-name">
           <a href="{{ url_for('visualize', workflow=wf.name) }}" class="cm-link-plain">{{ wf.name }}</a>
+          {% if wf.source_path %}
+          <span class="cm-workflow-path cm-mono cm-muted" title="{{ wf.source_path }}">{{ wf.source_path | dirname }}</span>
+          {% endif %}
         </div>
         <form method="post" action="{{ url_for('action_trigger_run', workflow=wf.name) }}" class="cm-inline-form">
           <button type="submit" class="cm-btn cm-btn-primary cm-btn-sm">Run</button>
@@ -102,7 +105,7 @@
     {% for run in runs %}
     <div class="cm-run-row">
       <span class="cm-run-wf">
-        <a href="{{ url_for('visualize', workflow=run.workflow_name) }}" class="cm-link-muted">{{ run.workflow_name }}</a>
+        <a href="{{ url_for('visualize', workflow=run.workflow) }}" class="cm-link-muted">{{ run.workflow }}</a>
       </span>
       <span>
         <span class="cm-badge cm-badge-{{ run.status }}">{{ run.status }}</span>
