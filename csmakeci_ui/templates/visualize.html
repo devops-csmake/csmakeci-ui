@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}{% if source_label %}{{ source_label }} — {% endif %}Visualize — csmakeci{% endblock %}
+
+{% block content %}
+{% macro render_step_card(node) %}
+<div class="cm-step-card {% if node.kind == 'aspect' %}cm-step-aspect{% endif %}"
+     data-step-id="{{ node.id }}"
+     onclick="selectStep({{ node.id | tojson }})">
+  <span class="cm-step-card-type cm-muted">{{ node.type }}</span>
+  <span class="cm-step-card-id">{{ node.id }}</span>
+  {% if node.aspect_name %}<span class="cm-step-card-aspect cm-chip">{{ node.aspect_name }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro render_flow_tree(nodes) %}
+{% for node in nodes %}
+  {% if node.type == 'parallel_group' %}
+  <div class="cm-flow-parallel">
+    {% for child in node.children %}
+    <div class="cm-flow-branch">
+      {{ render_flow_tree([child]) }}
+    </div>
+    {% endfor %}
+  </div>
+  {% elif node.type == 'subcommand' %}
+  <div class="cm-subcommand-box">
+    <div class="cm-subcommand-header">
+      <span class="cm-subcommand-label cm-mono">{{ node.id }}</span>
+    </div>
+    <div class="cm-subcommand-body">
+      {% if node.children %}
+        {{ render_flow_tree(node.children) }}
+      {% else %}
+        <span class="cm-muted" style="font-size:.75rem">empty</span>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  {{ render_step_card(node) }}
+  {% endif %}
+{% endfor %}
+{% endmacro %}
+
+<div class="cm-viz-layout" x-data="{
+  selectedStep: {{ (insp_section.id if insp_section else '') | tojson }},
+  rightTab: {{ right_tab | tojson }}
+}">
+
+  <!-- Top bar -->
+  <div class="cm-viz-topbar">
+    <div class="cm-viz-topbar-left">
+      <!-- Workflow picker -->
+      <div class="cm-select-wrap">
+        <select class="cm-select" onchange="location.href='/visualize?workflow='+encodeURIComponent(this.value)">
+          <option value="">— choose workflow —</option>
+          {% for wf in workflows_list %}
+          <option value="{{ wf.name }}" {% if wf.name == workflow_name %}selected{% endif %}>{{ wf.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {% if commands %}
+      <!-- Command tabs -->
+      <div class="cm-cmd-tabs">
+        {% for cmd in commands %}
+        <a class="cm-cmd-tab {% if selected_cmd and selected_cmd.id == cmd.id %}cm-cmd-tab-active{% endif %}"
+           href="{{ url_for('visualize', workflow=workflow_name, cmd=cmd.id) }}">{{ cmd.id }}</a>
+        {% endfor %}
+        {% for sub in subcommands %}
+        <a class="cm-cmd-tab cm-cmd-tab-sub {% if selected_cmd and selected_cmd.id == sub.id %}cm-cmd-tab-active{% endif %}"
+           href="{{ url_for('visualize', workflow=workflow_name, cmd=sub.id) }}">{{ sub.id }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="cm-viz-topbar-right">
+      {% if workflow_name %}
+      <form method="post" action="{{ url_for('action_trigger_run', workflow=workflow_name) }}" class="cm-inline-form">
+        <button type="submit" class="cm-btn cm-btn-primary cm-btn-sm">Run</button>
+      </form>
+      {% endif %}
+      {% if source_label %}
+      <span class="cm-chip cm-muted">{{ source_label }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Body: flow canvas + inspector -->
+  <div class="cm-viz-body">
+
+    <!-- Flow canvas -->
+    <div class="cm-viz-canvas">
+      {% if not workflow_name and not sections %}
+      <div class="cm-viz-empty">
+        <p class="cm-muted">Select a workflow above to visualize its flow.</p>
+        {% if workflows_list %}
+        <div class="cm-viz-empty-links">
+          {% for wf in workflows_list %}
+          <a href="{{ url_for('visualize', workflow=wf.name) }}" class="cm-btn cm-btn-ghost cm-btn-sm">{{ wf.name }}</a>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% elif not flow_tree and not buckets %}
+      <div class="cm-viz-empty">
+        <p class="cm-muted">No flow defined for this command.</p>
+      </div>
+      {% else %}
+
+      <!-- Phases strip -->
+      {% if phases %}
+      <div class="cm-phases-strip">
+        {% for ph in phases %}
+        <div class="cm-phase-chip">
+          <span class="cm-phase-dot" style="background:{{ ph.color or 'var(--cm-accent)' }}"></span>
+          {{ ph.id }}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Flow tree -->
+      {% if flow_tree %}
+      <div class="cm-flow-root">
+        {{ render_flow_tree(flow_tree) }}
+      </div>
+      {% endif %}
+
+      <!-- Buckets (maps / special sections) -->
+      {% if buckets %}
+      <div class="cm-buckets">
+        {% for bucket in buckets %}
+        <div class="cm-bucket">
+          <div class="cm-bucket-header">
+            <span class="cm-bucket-title">{{ bucket.label }}</span>
+          </div>
+          <div class="cm-bucket-chips">
+            {% for item in bucket.items %}
+            <span class="cm-chip" onclick="selectStep({{ item.id | tojson }})">{{ item.id }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% endif %}
+    </div>
+
+    <!-- Inspector panel -->
+    <aside class="cm-viz-inspector">
+      <div class="cm-inspector-tabs">
+        <button class="cm-inspector-tab" :class="rightTab==='inspector' && 'cm-inspector-tab-active'"
+                @click="rightTab='inspector'">Inspector</button>
+        <button class="cm-inspector-tab" :class="rightTab==='aspects' && 'cm-inspector-tab-active'"
+                @click="rightTab='aspects'">Aspects</button>
+        <button class="cm-inspector-tab" :class="rightTab==='refs' && 'cm-inspector-tab-active'"
+                @click="rightTab='refs'">Referenced</button>
+      </div>
+
+      <!-- Inspector tab -->
+      <div x-show="rightTab==='inspector'">
+        {% if insp_section %}
+        <div class="cm-insp-section">
+          <div class="cm-insp-header">
+            <span class="cm-insp-type cm-chip">{{ insp_section.type }}</span>
+            <span class="cm-insp-id cm-mono">{{ insp_section.id }}</span>
+          </div>
+          {% if insp_section.description %}
+          <p class="cm-insp-desc">{{ insp_section.description }}</p>
+          {% endif %}
+          <div class="cm-insp-fields">
+            {% for k, v in insp_section.items() %}
+            {% if k not in ('type', 'id', 'kind', 'raw', 'description') %}
+            <div class="cm-insp-field">
+              <span class="cm-insp-key cm-muted">{{ k }}</span>
+              <span class="cm-insp-val cm-mono">{{ v }}</span>
+            </div>
+            {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
+        <p class="cm-muted cm-insp-hint">Click a step to inspect it.</p>
+        {% endif %}
+      </div>
+
+      <!-- Aspects tab -->
+      <div x-show="rightTab==='aspects'">
+        {% if aspects_by_target %}
+        {% for target, aspects in aspects_by_target.items() %}
+        <div class="cm-insp-group">
+          <div class="cm-insp-group-title cm-mono">{{ target }}</div>
+          {% for asp in aspects %}
+          <div class="cm-insp-aspect-row">
+            <span class="cm-chip">{{ asp.aspect_name }}</span>
+            <span class="cm-muted cm-mono">{{ asp.type }}@{{ asp.id }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="cm-muted cm-insp-hint">No aspects defined.</p>
+        {% endif %}
+      </div>
+
+      <!-- Referenced tab -->
+      <div x-show="rightTab==='refs'">
+        {% if referenced_sections or referenced_aspects %}
+        {% if referenced_sections %}
+        <div class="cm-insp-group">
+          <div class="cm-insp-group-title">Sections</div>
+          {% for sec in referenced_sections %}
+          <div class="cm-insp-ref-row" onclick="selectStep({{ sec.id | tojson }})">
+            <span class="cm-chip">{{ sec.type }}</span>
+            <span class="cm-mono">{{ sec.id }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if referenced_aspects %}
+        <div class="cm-insp-group">
+          <div class="cm-insp-group-title">Aspects</div>
+          {% for asp in referenced_aspects %}
+          <div class="cm-insp-ref-row">
+            <span class="cm-chip">{{ asp.aspect_name }}</span>
+            <span class="cm-mono">{{ asp.type }}@{{ asp.id }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="cm-muted cm-insp-hint">No referenced sections.</p>
+        {% endif %}
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+function selectStep(id) {
+  const url = new URL(location.href);
+  url.searchParams.set('step', id);
+  url.searchParams.set('tab', 'inspector');
+  location.href = url.toString();
+}
+// Highlight selected step card
+document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(location.search);
+  const sel = params.get('step');
+  if (sel) {
+    const el = document.querySelector(`[data-step-id="${CSS.escape(sel)}"]`);
+    if (el) { el.classList.add('cm-step-card-selected'); el.scrollIntoView({block:'nearest'}); }
+  }
+});
+</script>
+{% endblock %}

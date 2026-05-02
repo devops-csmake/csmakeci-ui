@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run.id[:8] }} — csmakeci{% endblock %}
+
+{% block content %}
+<div class="cm-page-header">
+  <div class="cm-breadcrumb">
+    <a href="{{ url_for('visualize', workflow=run.workflow) }}" class="cm-link-muted">{{ run.workflow }}</a>
+    <span class="cm-breadcrumb-sep">/</span>
+    <span class="cm-mono">{{ run.id[:8] }}</span>
+  </div>
+  <div class="cm-page-header-actions">
+    {% if run.status in ('queued', 'running') %}
+    <form method="post" action="{{ url_for('action_cancel_run', run_id=run.id) }}" class="cm-inline-form">
+      <button type="submit" class="cm-btn cm-btn-danger cm-btn-sm">Cancel</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Run summary -->
+<div class="cm-run-summary"
+  x-data="{
+    status: {{ run.status | tojson }},
+    following: true,
+    logLines: [],
+    loaded: false,
+    sse: null,
+    init() {
+      {% if run.status in ('queued', 'running') %}
+        this.startSSE();
+      {% else %}
+        this.loadLog();
+      {% endif %}
+    },
+    startSSE() {
+      this.sse = new EventSource({{ stream_url | tojson }});
+      this.sse.addEventListener('log', e => {
+        try { const obj = JSON.parse(e.data); this.logLines.push(obj.line || e.data); }
+        catch { this.logLines.push(e.data); }
+        if (this.following) this.$nextTick(() => {
+          const el = this.$refs.logbox;
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      });
+      this.sse.addEventListener('done', () => {
+        this.status = 'done';
+        this.sse.close();
+        this.loadLog();
+      });
+      this.sse.onerror = () => { this.sse.close(); };
+    },
+    async loadLog() {
+      if (this.loaded) return;
+      const r = await fetch({{ log_api_url | tojson }});
+      const d = await r.json();
+      this.logLines = (d.lines || []).map(l => l.line || l);
+      this.loaded = true;
+    }
+  }">
+
+  <div class="cm-run-meta-bar">
+    <span class="cm-badge cm-badge-lg" :class="'cm-badge-' + status" x-text="status">{{ run.status }}</span>
+    <span class="cm-muted cm-mono">{{ fmt_duration(run.started_at, run.finished_at) }}</span>
+    <span class="cm-muted">{{ fmt_relative(run.started_at) }}</span>
+    {% if run.trigger_kind %}
+    <span class="cm-chip">{{ run.trigger_kind }}</span>
+    {% endif %}
+  </div>
+
+  <!-- Two-column layout -->
+  <div class="cm-run-layout">
+
+    <!-- Left: steps -->
+    <div class="cm-run-steps-panel">
+      <h3 class="cm-panel-title">Steps</h3>
+      {% if steps %}
+      <div class="cm-step-list">
+        {% for step in steps %}
+        <div class="cm-step-item cm-step-{{ step.status }}">
+          <div class="cm-step-icon">
+            {% if step.status == 'success' %}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="var(--cm-success)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {% elif step.status == 'failure' %}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="var(--cm-danger)" stroke-width="1.8" stroke-linecap="round"/></svg>
+            {% elif step.status == 'running' %}
+            <span class="cm-spinner-sm"></span>
+            {% elif step.status == 'skipped' %}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 3l4 3-4 3V3z" fill="var(--cm-muted)"/></svg>
+            {% else %}
+            <span class="cm-step-dot"></span>
+            {% endif %}
+          </div>
+          <div class="cm-step-info">
+            <span class="cm-step-name">{{ step.name or step.step_id }}</span>
+            {% if step.started_at %}
+            <span class="cm-step-dur cm-muted cm-mono">{{ fmt_duration(step.started_at, step.finished_at) }}</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="cm-muted">No steps recorded.</p>
+      {% endif %}
+
+      {% if phase_memory %}
+      <h3 class="cm-panel-title" style="margin-top:1.5rem">Phase memory</h3>
+      <div class="cm-phase-memory">
+        {% for pm in phase_memory %}
+        <div class="cm-pm-row">
+          <span class="cm-pm-key cm-mono">{{ pm.phase }}</span>
+          <span class="cm-pm-val cm-mono cm-muted">{{ pm.value }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if artifacts %}
+      <h3 class="cm-panel-title" style="margin-top:1.5rem">Artifacts</h3>
+      <div class="cm-artifact-list">
+        {% for art in artifacts %}
+        <div class="cm-artifact-item">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 1h6l2 2v10H3V1z" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M9 1v3h3" stroke="currentColor" stroke-width="1.3"/>
+          </svg>
+          <span class="cm-mono">{{ art.name }}</span>
+          {% if art.size_bytes %}<span class="cm-muted">{{ "%.1f"|format(art.size_bytes / 1024) }} KB</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Right: log -->
+    <div class="cm-run-log-panel">
+      <div class="cm-log-toolbar">
+        <h3 class="cm-panel-title">Log</h3>
+        <label class="cm-follow-toggle">
+          <input type="checkbox" x-model="following">
+          Follow
+        </label>
+      </div>
+      <pre class="cm-log-box" x-ref="logbox"><template x-for="(line, i) in logLines" :key="i"><span class="cm-log-line" x-text="line + '\n'"></span></template><template x-if="logLines.length === 0"><span class="cm-muted">Waiting for output…</span></template></pre>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

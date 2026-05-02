@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"
+  x-data="{
+    theme: localStorage.getItem('cm-theme') || 'paper',
+    searchOpen: false,
+    searchQ: '',
+    searchResults: [],
+    searchLoading: false,
+    async runSearch() {
+      if (!this.searchQ.trim()) { this.searchResults = []; return; }
+      this.searchLoading = true;
+      try {
+        const r = await fetch('/api/search?q=' + encodeURIComponent(this.searchQ));
+        this.searchResults = await r.json();
+      } finally { this.searchLoading = false; }
+    },
+    toggleTheme() {
+      this.theme = this.theme === 'paper' ? 'graphite' : 'paper';
+      localStorage.setItem('cm-theme', this.theme);
+    }
+  }"
+  :class="'theme-' + theme"
+  id="cm-root">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}csmakeci{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body class="cm-body">
+
+  <!-- Search overlay -->
+  <div class="cm-search-overlay" x-show="searchOpen" x-transition.opacity @click.self="searchOpen=false" style="display:none">
+    <div class="cm-search-modal" @keydown.escape.window="searchOpen=false">
+      <div class="cm-search-bar">
+        <svg class="cm-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <input x-ref="searchInput" x-model="searchQ" @input.debounce.200ms="runSearch()"
+               @keydown.escape="searchOpen=false"
+               class="cm-search-input" placeholder="Search workflows, runs…" autocomplete="off">
+        <kbd class="cm-kbd" @click="searchOpen=false">esc</kbd>
+      </div>
+      <div class="cm-search-results" x-show="searchQ">
+        <template x-if="searchLoading">
+          <div class="cm-search-hint">Searching…</div>
+        </template>
+        <template x-if="!searchLoading && searchResults.length === 0">
+          <div class="cm-search-hint">No results</div>
+        </template>
+        <template x-for="r in searchResults" :key="r.id">
+          <a :href="r.url" class="cm-search-result" @click="searchOpen=false">
+            <span class="cm-search-result-type" :class="'cm-badge-' + r.type" x-text="r.type"></span>
+            <span class="cm-search-result-name" x-text="r.name || r.id"></span>
+            <span class="cm-search-result-sub" x-text="r.subtitle || ''"></span>
+          </a>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="cm-sidebar">
+    <div class="cm-sidebar-top">
+      <a href="/" class="cm-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="8" height="8" rx="1.5" fill="var(--cm-accent)"/>
+          <rect x="13" y="3" width="8" height="8" rx="1.5" fill="var(--cm-accent)" opacity=".5"/>
+          <rect x="3" y="13" width="8" height="8" rx="1.5" fill="var(--cm-accent)" opacity=".5"/>
+          <rect x="13" y="13" width="8" height="8" rx="1.5" fill="var(--cm-accent)" opacity=".25"/>
+        </svg>
+        <span class="cm-logo-text">csmakeci</span>
+      </a>
+
+      <nav class="cm-nav">
+        <a href="/" class="cm-nav-item {% if request.endpoint == 'dashboard' %}cm-nav-active{% endif %}">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          Dashboard
+        </a>
+        <a href="/visualize" class="cm-nav-item {% if request.endpoint == 'visualize' %}cm-nav-active{% endif %}">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="3" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="13" cy="3" r="2" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="13" cy="13" r="2" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M5 8H8M8 8V3H11M8 8V13H11" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          Visualize
+        </a>
+        <a href="/settings" class="cm-nav-item {% if request.endpoint == 'settings' %}cm-nav-active{% endif %}">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          Settings
+        </a>
+      </nav>
+    </div>
+
+    <div class="cm-sidebar-bottom">
+      <button class="cm-nav-item cm-search-trigger" @click="searchOpen=true">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        Search
+        <kbd class="cm-kbd cm-kbd-inline">⌘K</kbd>
+      </button>
+      <button class="cm-nav-item" @click="toggleTheme()" title="Toggle theme">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path x-show="theme==='paper'" d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2z" fill="currentColor" opacity=".3"/>
+          <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        <span x-text="theme === 'paper' ? 'Light' : 'Dark'"></span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="cm-main">
+    {% block content %}{% endblock %}
+  </main>
+
+</body>
+</html>

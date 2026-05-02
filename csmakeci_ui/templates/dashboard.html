@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — csmakeci{% endblock %}
+
+{% block content %}
+<div class="cm-page-header">
+  <div>
+    <h1 class="cm-page-title">Dashboard</h1>
+    <p class="cm-page-sub">{{ stats.get('workflow_count', 0) }} workflow{% if stats.get('workflow_count', 0) != 1 %}s{% endif %}</p>
+  </div>
+</div>
+
+<!-- Stats row -->
+<div class="cm-stat-row">
+  <div class="cm-stat-card">
+    <span class="cm-stat-label">Total runs</span>
+    <span class="cm-stat-value">{{ stats.get('total_runs', 0) }}</span>
+  </div>
+  <div class="cm-stat-card">
+    <span class="cm-stat-label">Success rate</span>
+    <span class="cm-stat-value">
+      {% if stats.get('total_runs', 0) > 0 %}
+        {{ "%.0f"|format(stats.get('success_rate', 0) * 100) }}%
+      {% else %}—{% endif %}
+    </span>
+  </div>
+  <div class="cm-stat-card">
+    <span class="cm-stat-label">Running now</span>
+    <span class="cm-stat-value">{{ stats.get('running_count', 0) }}</span>
+  </div>
+  <div class="cm-stat-card">
+    <span class="cm-stat-label">Avg duration</span>
+    <span class="cm-stat-value">
+      {% set avg = stats.get('avg_duration_secs') %}
+      {% if avg %}{{ "%dm %02ds"|format((avg//60)|int, (avg%60)|int) }}{% else %}—{% endif %}
+    </span>
+  </div>
+</div>
+
+<!-- Workflows -->
+<section class="cm-section">
+  <h2 class="cm-section-title">Workflows</h2>
+
+  {% if not workflows %}
+  <div class="cm-empty">
+    <p>No workflows found. Add <code>.csmakeci</code> files to your workflows directory.</p>
+  </div>
+  {% else %}
+  <div class="cm-workflow-grid">
+    {% for wf in workflows %}
+    <div class="cm-workflow-card">
+      <div class="cm-workflow-card-header">
+        <div class="cm-workflow-card-name">
+          <a href="{{ url_for('visualize', workflow=wf.name) }}" class="cm-link-plain">{{ wf.name }}</a>
+        </div>
+        <form method="post" action="{{ url_for('action_trigger_run', workflow=wf.name) }}" class="cm-inline-form">
+          <button type="submit" class="cm-btn cm-btn-primary cm-btn-sm">Run</button>
+        </form>
+      </div>
+
+      {% if wf.description %}
+      <p class="cm-workflow-desc">{{ wf.description }}</p>
+      {% endif %}
+
+      <div class="cm-workflow-meta">
+        {% if wf.last_run_status %}
+        <span class="cm-badge cm-badge-{{ wf.last_run_status }}">{{ wf.last_run_status }}</span>
+        {% endif %}
+        {% if wf.last_run_at %}
+        <span class="cm-muted">{{ fmt_relative(wf.last_run_at) }}</span>
+        {% endif %}
+      </div>
+
+      <!-- Sparkline -->
+      {% if wf.sparkline %}
+      <div class="cm-sparkline">
+        {% for s in wf.sparkline %}
+        <span class="cm-spark cm-spark-{{ s }}" title="{{ s }}"></span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<!-- Recent runs -->
+<section class="cm-section">
+  <h2 class="cm-section-title">Recent runs</h2>
+
+  {% if not runs %}
+  <div class="cm-empty"><p>No runs yet.</p></div>
+  {% else %}
+  <div class="cm-run-table">
+    <div class="cm-run-table-head">
+      <span>Workflow</span>
+      <span>Status</span>
+      <span>Duration</span>
+      <span>Started</span>
+      <span></span>
+    </div>
+    {% for run in runs %}
+    <div class="cm-run-row">
+      <span class="cm-run-wf">
+        <a href="{{ url_for('visualize', workflow=run.workflow_name) }}" class="cm-link-muted">{{ run.workflow_name }}</a>
+      </span>
+      <span>
+        <span class="cm-badge cm-badge-{{ run.status }}">{{ run.status }}</span>
+      </span>
+      <span class="cm-muted cm-mono">{{ fmt_duration(run.started_at, run.finished_at) }}</span>
+      <span class="cm-muted">{{ fmt_relative(run.started_at) }}</span>
+      <span>
+        <a href="{{ url_for('run_detail', run_id=run.id) }}" class="cm-btn cm-btn-ghost cm-btn-sm">View</a>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

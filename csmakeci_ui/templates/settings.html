@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Settings — csmakeci{% endblock %}
+
+{% block content %}
+<div class="cm-page-header">
+  <h1 class="cm-page-title">Settings</h1>
+  <p class="cm-page-sub">{{ server_api }}</p>
+</div>
+
+<div class="cm-settings-layout">
+
+  <!-- Section nav -->
+  <nav class="cm-settings-nav">
+    <a href="{{ url_for('settings', section='secrets') }}"
+       class="cm-settings-nav-item {% if section == 'secrets' %}cm-settings-nav-active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="3" y="6" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M5 6V4a2 2 0 1 1 4 0v2" stroke="currentColor" stroke-width="1.3"/>
+      </svg>
+      Secrets
+    </a>
+    <a href="{{ url_for('settings', section='env') }}"
+       class="cm-settings-nav-item {% if section == 'env' %}cm-settings-nav-active{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M2 4h10M2 7h6M2 10h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+      Environment
+    </a>
+  </nav>
+
+  <!-- Section content -->
+  <div class="cm-settings-content">
+
+    <!-- Secrets -->
+    {% if section == 'secrets' %}
+    <div class="cm-settings-section">
+      <div class="cm-settings-section-header">
+        <h2 class="cm-settings-title">Secrets</h2>
+        <p class="cm-settings-desc">
+          Provider: <strong>{{ secrets_provider.get('provider', 'local') }}</strong>.
+          Managed here in the UI — the build server has no access to secret values.
+        </p>
+      </div>
+
+      {% if secrets_auth_error is defined %}
+      <div class="cm-alert cm-alert-danger">{{ secrets_auth_error }}</div>
+      {% endif %}
+
+      <!-- Auth form (only shown when provider requires credentials) -->
+      {% if secrets_provider.get('requires_auth') and secrets_provider.get('auth_fields') %}
+      <form method="post" action="{{ url_for('action_secrets_auth') }}" class="cm-settings-form">
+        <div class="cm-form-row">
+          {% for field in secrets_provider.auth_fields %}
+          <div class="cm-form-field">
+            <label class="cm-label">{{ field.label }}</label>
+            <input class="cm-input" name="{{ field.name }}" type="{{ field.type }}" required>
+          </div>
+          {% endfor %}
+          <div class="cm-form-field cm-form-field-action">
+            <label class="cm-label">&nbsp;</label>
+            <button type="submit" class="cm-btn cm-btn-primary">Connect</button>
+          </div>
+        </div>
+      </form>
+      {% endif %}
+
+      <!-- Add secret form -->
+      <form method="post" action="{{ url_for('action_add_secret') }}" class="cm-settings-form"
+            x-data="{scope: 'org'}">
+        <div class="cm-form-row">
+          <div class="cm-form-field">
+            <label class="cm-label">Name</label>
+            <input class="cm-input cm-mono" name="name" placeholder="MY_SECRET" required autocomplete="off">
+          </div>
+          <div class="cm-form-field">
+            <label class="cm-label">Value</label>
+            <input class="cm-input" name="value" type="password" placeholder="••••••••" required autocomplete="new-password">
+          </div>
+          <div class="cm-form-field cm-form-field-sm">
+            <label class="cm-label">Scope</label>
+            <select class="cm-select" name="scope_kind" x-model="scope">
+              <option value="org">org</option>
+              <option value="workflow">workflow</option>
+            </select>
+          </div>
+          <div class="cm-form-field cm-form-field-sm" x-show="scope !== 'org'">
+            <label class="cm-label">Scope ID</label>
+            <input class="cm-input" name="scope_id" placeholder="workflow name">
+          </div>
+          <div class="cm-form-field cm-form-field-action">
+            <label class="cm-label">&nbsp;</label>
+            <button type="submit" class="cm-btn cm-btn-primary">Add</button>
+          </div>
+        </div>
+      </form>
+
+      <!-- Secrets table -->
+      {% if secrets %}
+      <div class="cm-table">
+        <div class="cm-table-head">
+          <span>Name</span>
+          <span>Scope</span>
+          <span>Created</span>
+          <span></span>
+        </div>
+        {% for s in secrets %}
+        <div class="cm-table-row">
+          <span class="cm-mono">{{ s.name }}</span>
+          <span class="cm-muted">{{ s.scope_kind }}{% if s.scope_id %}: {{ s.scope_id }}{% endif %}</span>
+          <span class="cm-muted">{{ fmt_relative(s.created_at) if s.created_at else '—' }}</span>
+          <span>
+            <form method="post" action="{{ url_for('action_delete_secret', name=s.name) }}"
+                  class="cm-inline-form"
+                  onsubmit="return confirm('Delete secret {{ s.name }}?')">
+              <button type="submit" class="cm-btn cm-btn-danger-ghost cm-btn-sm">Delete</button>
+            </form>
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="cm-empty"><p>No secrets defined.</p></div>
+      {% endif %}
+    </div>
+
+    <!-- Environment vars -->
+    {% elif section == 'env' %}
+    <div class="cm-settings-section">
+      <div class="cm-settings-section-header">
+        <h2 class="cm-settings-title">Environment Variables</h2>
+        <p class="cm-settings-desc">Plaintext variables injected into workflow runs.</p>
+      </div>
+
+      <form method="post" action="{{ url_for('action_add_env') }}" class="cm-settings-form"
+            x-data="{scope: 'org'}">
+        <div class="cm-form-row">
+          <div class="cm-form-field">
+            <label class="cm-label">Name</label>
+            <input class="cm-input cm-mono" name="name" placeholder="MY_VAR" required autocomplete="off">
+          </div>
+          <div class="cm-form-field">
+            <label class="cm-label">Value</label>
+            <input class="cm-input cm-mono" name="value" placeholder="value" required>
+          </div>
+          <div class="cm-form-field cm-form-field-sm">
+            <label class="cm-label">Scope</label>
+            <select class="cm-select" name="scope_kind" x-model="scope">
+              <option value="org">org</option>
+              <option value="workflow">workflow</option>
+            </select>
+          </div>
+          <div class="cm-form-field cm-form-field-sm" x-show="scope !== 'org'">
+            <label class="cm-label">Scope ID</label>
+            <input class="cm-input" name="scope_id" placeholder="workflow name">
+          </div>
+          <div class="cm-form-field cm-form-field-action">
+            <label class="cm-label">&nbsp;</label>
+            <button type="submit" class="cm-btn cm-btn-primary">Add</button>
+          </div>
+        </div>
+      </form>
+
+      {% if env_vars %}
+      <div class="cm-table">
+        <div class="cm-table-head">
+          <span>Name</span>
+          <span>Value</span>
+          <span>Scope</span>
+          <span></span>
+        </div>
+        {% for v in env_vars %}
+        <div class="cm-table-row">
+          <span class="cm-mono">{{ v.name }}</span>
+          <span class="cm-mono cm-muted">{{ v.value }}</span>
+          <span class="cm-muted">{{ v.scope_kind }}{% if v.scope_id %}: {{ v.scope_id }}{% endif %}</span>
+          <span>
+            <form method="post" action="{{ url_for('action_delete_env', var_id=v.id) }}"
+                  class="cm-inline-form"
+                  onsubmit="return confirm('Delete {{ v.name }}?')">
+              <button type="submit" class="cm-btn cm-btn-danger-ghost cm-btn-sm">Delete</button>
+            </form>
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="cm-empty"><p>No environment variables defined.</p></div>
+      {% endif %}
+    </div>
+
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
